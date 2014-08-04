@@ -122,6 +122,30 @@ void port_status(int portnum)
     printf("\n");
 }
 
+void toggle_power(struct usbdevfs_ctrltransfer ctrl, int portnum, int power_on)
+{
+    int rc;
+
+    if (power_on)
+        ctrl.bRequest = USB_REQ_SET_FEATURE;
+    else
+        ctrl.bRequest = USB_REQ_CLEAR_FEATURE;
+
+    ctrl.bRequestType = USB_DIR_OUT | USB_TYPE_CLASS |
+            USB_RECIP_OTHER;
+    ctrl.wValue = USB_PORT_FEAT_POWER;
+    ctrl.wIndex = portnum;
+    ctrl.wLength = 0;
+    ctrl.timeout = USB_HUB_TIMEOUT;
+    ctrl.data = NULL;
+    rc = ioctl(fd, USBDEVFS_CONTROL, &ctrl);
+    if (rc == -1) {
+        fprintf(stderr, "Error in ioctl "
+            "(set/clear port %d feature): %s\n",
+            portnum, strerror(errno));
+    }
+}
+
 int main(int argc, char **argv)
 {
     int busnum, devnum, numports;
@@ -227,6 +251,7 @@ int main(int argc, char **argv)
 
     if (action == DO_POWER) {
         int i;
+        int power_on = 1;
 
         usb_ioctl.ifno = 0;
         usb_ioctl.ioctl_code = USBDEVFS_DISCONNECT;
@@ -246,27 +271,18 @@ int main(int argc, char **argv)
             }
 
             if (strcmp(argv[i+1], "on") == 0)
-                ctrl.bRequest = USB_REQ_SET_FEATURE;
+                toggle_power(ctrl, portnum, 1);
             else if (strcmp(argv[i+1], "off") == 0)
-                ctrl.bRequest = USB_REQ_CLEAR_FEATURE;
+                toggle_power(ctrl, portnum, 0);
+            else if (strcmp(argv[i+1], "loop") == 0)
+                while(1) {
+                    toggle_power(ctrl, portnum, power_on);
+                    power_on = ! power_on;
+                    sleep(1);
+                }
             else {
                 fprintf(stderr, "Invalid port power level: %s\n)",
                         argv[i+1]);
-                continue;
-            }
-
-            ctrl.bRequestType = USB_DIR_OUT | USB_TYPE_CLASS |
-                    USB_RECIP_OTHER;
-            ctrl.wValue = USB_PORT_FEAT_POWER;
-            ctrl.wIndex = portnum;
-            ctrl.wLength = 0;
-            ctrl.timeout = USB_HUB_TIMEOUT;
-            ctrl.data = NULL;
-            rc = ioctl(fd, USBDEVFS_CONTROL, &ctrl);
-            if (rc == -1) {
-                fprintf(stderr, "Error in ioctl "
-                    "(set/clear port %d feature): %s\n",
-                    portnum, strerror(errno));
                 continue;
             }
 
@@ -275,4 +291,3 @@ int main(int argc, char **argv)
     }
     return 0;
 }
-
